@@ -1,0 +1,82 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import json
+import cwlproto
+import yaml
+import argparse
+import subprocess
+
+def which(program):
+    for path in os.environ["PATH"].split(":"):
+        p = os.path.join(path, program)
+        if os.path.exists(p):
+            return p
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Funnel Client for Common Workflow Language')
+
+    parser.add_argument("--basedir", type=str,
+                        help="Base directory used to resolve relative references in the input, default to directory of input object file or current directory (if inputs piped/provided on command line).")
+    parser.add_argument("--outdir", type=str, default=os.path.abspath('.'),
+                        help="Output directory, default current directory")
+    parser.add_argument("--conformance-test", action="store_true", default=False)
+
+    parser.add_argument("--no-container", action="store_false", default=True,
+                    help="Do not execute jobs in a Docker container, even when specified by the CommandLineTool",
+                    dest="use_container")
+
+    parser.add_argument("--tmp-outdir-prefix")
+    parser.add_argument("--tmpdir-prefix")
+
+    parser.add_argument("--eval-timeout",
+                        help="Time to wait for a Javascript expression to evaluate before giving an error, default 20s.",
+                        type=float,
+                        default=20)
+    parser.add_argument("--version", action="store_true", help="Print version and exit")
+
+    exgroup = parser.add_mutually_exclusive_group()
+    exgroup.add_argument("--verbose", action="store_true", help="Default logging")
+    exgroup.add_argument("--quiet", action="store_true", help="Only print warnings and errors.")
+    exgroup.add_argument("--debug", action="store_true", help="Print even more logging")
+
+    parser.add_argument("--tool-help", action="store_true", help="Print command line help for tool")
+    parser.add_argument("--default-container", default="python", help="default docker container to use")
+
+    parser.add_argument("workflow", type=str, nargs="?", default=None, help="The workflow to execute")
+    parser.add_argument("job_order", nargs=argparse.REMAINDER, help="The input object to the workflow.")
+
+    args = parser.parse_args()
+
+    cwltool = which("cwltool")
+    if args.version:
+        subprocess.check_call([cwltool, "--version"])
+        return
+
+    wf = cwlproto.load_cwl(args.workflow, True)
+
+    proto = args.workflow + ".proto"
+    newfile = proto + ".cwl"
+
+    txt = yaml.safe_dump(cwlproto.to_dict(wf), default_flow_style=False)
+    with open(proto, "w") as handle:
+        handle.write(txt)
+
+    wf = cwlproto.load_proto(proto)
+
+    txt = yaml.safe_dump(cwlproto.to_cwl(wf), default_flow_style=False)
+    with open(newfile, "w") as handle:
+        handle.write(txt)
+
+    cmd = [cwltool]
+
+    cmd.append(newfile)
+    if args.job_order is not None:
+        cmd.append(*args.job_order)
+
+    subprocess.check_call(cmd)
+
+if __name__ == "__main__":
+    main()
