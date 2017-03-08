@@ -188,6 +188,7 @@ class Schema:
     def generate(self):
         out = """
 syntax = "proto3";
+option go_package = "cwlproto";
 
 import "google/protobuf/struct.proto";
 
